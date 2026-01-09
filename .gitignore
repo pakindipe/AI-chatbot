@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 venv/
+data/*.pdf
+data/*.docx
+documents.pkl
+faiss_index.bin
+__pycache__/
