@@ -48,12 +48,13 @@ pip install -r requirements.txt
 
 ▶️ Running the App
 
+```text
 streamlit run app.py
 
 Then open your browser at:
 
 http://localhost:8501
-
+```
 ---
 
 ## Tech Stack
@@ -80,11 +81,4 @@ AI-chatbot/
 ├── documents.pkl       # Stored documents
 ├── requirements.txt
 └── README.md
-
-## Setup & Installation
-
-### 1️⃣ Clone the repository
-```bash
-git clone https://github.com/pakindipe/AI-chatbot.git
-cd AI-chatbot
 
