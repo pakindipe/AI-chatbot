@@ -32,27 +32,37 @@ cd AI-chatbot
 
 2️⃣ Create & activate a virtual environment
 
+```bash
 python -m venv venv
+```
 
 Windows:
 
+```bash
 venv\Scripts\activate
+```
 
 macOS / Linux
 
+```bash
 source venv/bin/activate
+```
 
 3️⃣ Install dependencies
 
+```bash
 pip install -r requirements.txt
+```
 
 ▶️ Running the App
 
 ```bash
 streamlit run app.py
+```
 
 Then open your browser at:
 
+```bash
 http://localhost:8501
 ```
 ---
