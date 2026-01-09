@@ -48,7 +48,7 @@ pip install -r requirements.txt
 
 ▶️ Running the App
 
-```text
+```bash
 streamlit run app.py
 
 Then open your browser at:
