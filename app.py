@@ -1,57 +1,114 @@
-"""
-app.py
-------
-
-This Streamlit application provides a simple chat interface for interacting
-with the retrieval‑augmented chatbot.  It uses the ``answer_query`` function
-from ``chat.py`` to generate responses based on a knowledge base built by
-``ingest.py``.
-
-To run the app, first ensure you have run ``ingest.py`` to build the index and
-that the environment has the required dependencies installed.  Then execute::
-
-    streamlit run app.py
-
-in the terminal from this directory.  A web browser window will open with the
-chat interface.
-"""
-
 import streamlit as st
+
+# Tab 2: your existing RAG chat function
 from chat import answer_query
 
+# Tab 1: document summarizer helpers
+from summarizer import extract_text, summarize_document
 
-def main() -> None:
-    st.set_page_config(page_title="AI Chatbot", page_icon="🤖", layout="centered")
-    st.title("AI Chatbot")
-    st.markdown("\nType a question below and press **Send** to get a response.")
 
-    # Initialize conversation history
-    if "history" not in st.session_state:
-        st.session_state["history"] = []  # list of (user_input, bot_reply, sources)
+def main():
+    st.set_page_config(
+        page_title="AI Document Assistant",
+        page_icon="📄",
+        layout="centered",
+    )
 
-    # Input box for user query
-    user_input = st.text_input("You:", key="input")
+    st.title("AI Document Assistant")
 
-    if st.button("Send") and user_input:
-        try:
-            result = answer_query(user_input)
-            answer = result["answer"]
-            sources = result["sources"]
-        except Exception as e:
-            answer = f"Error generating answer: {e}"
-            sources = []
+    tab1, tab2 = st.tabs(["📄 Document Summarizer", "💬 RAG Chat (Knowledge Base)"])
 
-        st.session_state["history"].append((user_input, answer, sources))
-        st.rerun()
+    # ----------------------------
+    # TAB 1: Document Summarizer
+    # ----------------------------
+    with tab1:
+        st.subheader("Upload a document and get a clean summary")
 
-    # Display conversation history
-    for user_text, bot_reply, sources in st.session_state["history"]:
-        st.markdown(f"**You:** {user_text}")
-        st.markdown(f"**Bot:** {bot_reply}\n")
+        # Initialize state for this tab
+        if "last_summary" not in st.session_state:
+            st.session_state["last_summary"] = ""
+        if "last_text" not in st.session_state:
+            st.session_state["last_text"] = ""
 
-        with st.expander("Sources used"):
-            for i, src in enumerate(sources, 1):
-                st.markdown(f"**Source {i}:** {src}")
+        uploaded = st.file_uploader(
+            "Upload PDF, DOCX, or TXT",
+            type=["pdf", "docx", "txt"],
+        )
+
+        text = ""
+        if uploaded is not None:
+            file_bytes = uploaded.getvalue()
+            text = extract_text(uploaded.name, file_bytes)
+            st.session_state["last_text"] = text
+
+        col1, col2 = st.columns(2)
+
+        do_summary = False
+        with col1:
+            do_summary = st.button("Summarize", type="primary", disabled=(uploaded is None))
+
+        with col2:
+            st.download_button(
+                "Download extracted text",
+                data=(st.session_state["last_text"] or "").encode("utf-8", errors="ignore"),
+                file_name="extracted_text.txt",
+                mime="text/plain",
+                disabled=(uploaded is None),
+            )
+
+        if do_summary:
+            with st.spinner("Summarizing..."):
+                st.session_state["last_summary"] = summarize_document(st.session_state["last_text"])
+
+        if st.session_state["last_summary"]:
+            st.subheader("Summary")
+            st.write(st.session_state["last_summary"])
+
+        if st.session_state["last_text"]:
+            with st.expander("Show extracted text"):
+                st.write(st.session_state["last_text"])
+
+    # ----------------------------
+    # TAB 2: RAG Chat
+    # ----------------------------
+    with tab2:
+        st.subheader("Ask questions using your FAISS knowledge base")
+
+        # Initialize state for chat tab
+        if "history" not in st.session_state:
+            st.session_state["history"] = []
+
+        user_input = st.text_input("You:", key="input")
+
+        if st.button("Send") and user_input:
+            try:
+                result = answer_query(user_input)
+
+                # Your answer_query may return dict or string depending on your edits
+                if isinstance(result, dict):
+                    answer = result.get("answer", "")
+                    sources = result.get("sources", [])
+                else:
+                    answer = str(result)
+                    sources = []
+
+            except Exception as e:
+                answer = f"Error generating answer: {e}"
+                sources = []
+
+            st.session_state["history"].append((user_input, answer, sources))
+            st.rerun()
+
+        for user_text, bot_reply, sources in st.session_state["history"]:
+            st.markdown(f"**You:** {user_text}")
+            st.markdown(f"**Bot:** {bot_reply}")
+
+            if sources:
+                with st.expander("Sources used"):
+                    for i, s in enumerate(sources, start=1):
+                        st.markdown(f"**Source {i}:** {s}")
+
+        st.markdown("---")
 
 
 if __name__ == "__main__":
