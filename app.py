@@ -1,82 +1,105 @@
 import streamlit as st
 
-# Tab 2: your existing RAG chat function
 from chat import answer_query
-
-# Tab 1: document summarizer helpers
 from summarizer import extract_text, summarize_document
 
 
 def main():
     st.set_page_config(
-        page_title="AI Document Assistant",
-        page_icon="📄",
+        page_title="AI Document Chatbot",
+        page_icon="🤖",
         layout="centered",
     )
 
-    st.title("AI Document Assistant")
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
 
-    tab1, tab2 = st.tabs(["📄 Document Summarizer", "💬 RAG Chat (Knowledge Base)"])
+    html, body, [class*="css"] {
+      font-family: 'Poppins', sans-serif;
+    }
 
-    # ----------------------------
-    # TAB 1: Document Summarizer
-    # ----------------------------
+    h1 { font-weight: 700; }
+
+    section.main > div { padding-top: 2rem; }
+
+    .stButton > button {
+      border-radius: 12px;
+      padding: 0.55rem 1rem;
+      font-weight: 600;
+    }
+
+    div[data-testid="stFileUploader"] {
+      padding: 0.75rem;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.title("AI Document ChatBot")
+    st.caption("By Philip Akindipe")
+
+    tab1, tab2 = st.tabs(["📝 Summarizer", "💬 Chat (Knowledge Base)"])
+
+
+    # =======================
+    # TAB 1: DOCUMENT SUMMARY
+    # =======================
     with tab1:
         st.subheader("Upload a document and get a clean summary")
-
-        # Initialize state for this tab
-        if "last_summary" not in st.session_state:
-            st.session_state["last_summary"] = ""
-        if "last_text" not in st.session_state:
-            st.session_state["last_text"] = ""
 
         uploaded = st.file_uploader(
             "Upload PDF, DOCX, or TXT",
             type=["pdf", "docx", "txt"],
         )
 
-        text = ""
-        if uploaded is not None:
-            file_bytes = uploaded.getvalue()
-            text = extract_text(uploaded.name, file_bytes)
-            st.session_state["last_text"] = text
+        # Initialize state
+        st.session_state.setdefault("extracted_text", None)
+        st.session_state.setdefault("summary_result", None)
 
-        col1, col2 = st.columns(2)
+        if uploaded:
+            text = extract_text(uploaded.name, uploaded.getvalue())
+            st.session_state["extracted_text"] = text
 
-        do_summary = False
-        with col1:
-            do_summary = st.button("Summarize", type="primary", disabled=(uploaded is None))
+            col1, col2 = st.columns(2)
 
-        with col2:
-            st.download_button(
-                "Download extracted text",
-                data=(st.session_state["last_text"] or "").encode("utf-8", errors="ignore"),
-                file_name="extracted_text.txt",
-                mime="text/plain",
-                disabled=(uploaded is None),
-            )
+            with col1:
+                do_summary = st.button("Summarize", type="primary")
 
-        if do_summary:
-            with st.spinner("Summarizing..."):
-                st.session_state["last_summary"] = summarize_document(st.session_state["last_text"])
+            with col2:
+                st.download_button(
+                    "Download extracted text",
+                    data=text.encode("utf-8", errors="ignore"),
+                    file_name="extracted_text.txt",
+                    mime="text/plain",
+                )
 
-        if st.session_state["last_summary"]:
+            if do_summary:
+                with st.spinner("Summarizing document..."):
+                    st.session_state["summary_result"] = summarize_document(text)
+
+        # ---- Display results ----
+        if st.session_state["summary_result"]:
+            result = st.session_state["summary_result"]
+
+            st.subheader("Document type")
+            st.write(result["doc_type"])
+
             st.subheader("Summary")
-            st.write(st.session_state["last_summary"])
+            st.write(result["summary"])
 
-        if st.session_state["last_text"]:
+        if st.session_state["extracted_text"]:
             with st.expander("Show extracted text"):
-                st.write(st.session_state["last_text"])
+                st.write(st.session_state["extracted_text"])
 
-    # ----------------------------
-    # TAB 2: RAG Chat
-    # ----------------------------
+    # =======================
+    # TAB 2: RAG CHAT
+    # =======================
     with tab2:
         st.subheader("Ask questions using your FAISS knowledge base")
 
-        # Initialize state for chat tab
-        if "history" not in st.session_state:
-            st.session_state["history"] = []
+        st.session_state.setdefault("history", [])
 
         user_input = st.text_input("You:", key="input")
 
@@ -84,7 +107,6 @@ def main():
             try:
                 result = answer_query(user_input)
 
-                # Your answer_query may return dict or string depending on your edits
                 if isinstance(result, dict):
                     answer = result.get("answer", "")
                     sources = result.get("sources", [])

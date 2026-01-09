@@ -1,88 +1,151 @@
-# summarizer.py
-from __future__ import annotations
+import io
+import re
+from typing import List, Dict
 
-from functools import lru_cache
-from typing import List
-
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-
-
-@lru_cache(maxsize=1)
-def get_summarizer():
-    """
-    Loads a summarization model once and reuses it.
-    flan-t5-base works but can be a bit weak; still fine for this project.
-    """
-    model_name = "google/flan-t5-base"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-    return tokenizer, model
+import docx
+from pypdf import PdfReader
+from transformers import pipeline
 
 
-def split_text(text: str) -> List[str]:
-    # Chunking avoids the "583 > 512" warning and prevents truncation
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1200,   # characters (not tokens)
-        chunk_overlap=150
-    )
-    chunks = splitter.split_text(text)
-    # remove tiny/empty chunks
-    return [c.strip() for c in chunks if c.strip()]
+# -----------------------------
+# Text extraction
+# -----------------------------
+
+def extract_text(filename: str, file_bytes: bytes) -> str:
+    filename = filename.lower()
+
+    if filename.endswith(".pdf"):
+        reader = PdfReader(io.BytesIO(file_bytes))
+        return "\n".join((page.extract_text() or "") for page in reader.pages)
+
+    if filename.endswith(".docx"):
+        doc = docx.Document(io.BytesIO(file_bytes))
+        return "\n".join(p.text for p in doc.paragraphs)
+
+    if filename.endswith(".txt"):
+        return file_bytes.decode("utf-8", errors="ignore")
+
+    raise ValueError("Unsupported file type")
 
 
-def _summarize_one(chunk: str, tokenizer, model, max_new_tokens: int = 140) -> str:
-    prompt = (
-        "Summarize the following text clearly and concisely.\n"
-        "If it looks like a resume, say whose resume it is.\n\n"
-        f"{chunk}\n\nSummary:"
-    )
+# -----------------------------
+# Chunking (simple, word-based)
+# -----------------------------
 
-    inputs = tokenizer(
-        prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=512
-    )
-    outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
-    return tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
+def chunk_text(text: str, max_words: int = 260) -> List[str]:
+    # Smaller chunks = safer for model max length
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), max_words):
+        chunks.append(" ".join(words[i:i + max_words]))
+    return chunks
 
 
-def summarize_document(text: str) -> str:
-    """
-    Map-reduce summarization:
-    1) split text into chunks
-    2) summarize each chunk
-    3) summarize the summaries (final)
-    """
-    tokenizer, model = get_summarizer()
+# -----------------------------
+# Doc type detection (heuristics)
+# -----------------------------
 
-    chunks = split_text(text)
-    if not chunks:
-        return "No text found to summarize."
+def detect_doc_type(text: str) -> str:
+    t = text.lower()
 
-    # MAP: summarize each chunk
-    chunk_summaries = [_summarize_one(c, tokenizer, model) for c in chunks]
+    # Resume/CV signals
+    resume_signals = [
+        "education", "experience", "skills", "projects", "certifications",
+        "linkedin.com", "github.com", "curriculum vitae", "resume"
+    ]
+    resume_hits = sum(1 for s in resume_signals if s in t)
 
-    # If document is short, just return first pass summary
-    if len(chunk_summaries) == 1:
-        return chunk_summaries[0]
+    # Email/letter signals
+    letter_signals = ["dear ", "sincerely", "to whom it may concern", "regards,"]
+    letter_hits = sum(1 for s in letter_signals if s in t)
 
-    # REDUCE: summarize the summaries
-    combined = "\n".join(f"- {s}" for s in chunk_summaries)
+    # Academic/article signals
+    article_signals = ["abstract", "introduction", "method", "results", "references", "bibliography"]
+    article_hits = sum(1 for s in article_signals if s in t)
 
-    final_prompt = (
-        "You are summarizing an entire document based on section summaries.\n"
-        "Write a clean overall summary in 2-5 sentences.\n"
-        "If it's a resume, say whose resume it is and what it highlights.\n\n"
-        f"{combined}\n\nFinal Summary:"
-    )
+    # Simple scoring
+    if resume_hits >= 3:
+        return "Resume/CV"
+    if letter_hits >= 2:
+        return "Cover letter / Letter"
+    if article_hits >= 3:
+        return "Article / Paper"
+    return "General document"
 
-    inputs = tokenizer(
-        final_prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=512
-    )
-    outputs = model.generate(**inputs, max_new_tokens=180)
-    return tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
+
+def try_extract_person_name(text: str) -> str | None:
+    # quick heuristic: look for a line that looks like a name near the top
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    top = lines[:25]
+
+    # common email/phone patterns to ignore
+    email_re = re.compile(r"\b[\w\.-]+@[\w\.-]+\.\w+\b")
+    phone_re = re.compile(r"\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b")
+
+    for ln in top:
+        if email_re.search(ln) or phone_re.search(ln):
+            continue
+        # looks like 2-4 capitalized words
+        words = ln.split()
+        if 2 <= len(words) <= 4 and all(w[:1].isalpha() for w in words):
+            # reject section headers like EXPERIENCE
+            if ln.isupper() and len(ln) < 20:
+                continue
+            # if it contains mostly letters and spaces, accept
+            if sum(ch.isalpha() for ch in ln) >= max(6, int(0.7 * len(ln))):
+                return ln
+    return None
+
+
+# -----------------------------
+# Summarization (fast + stable)
+# -----------------------------
+
+# Use a smaller model than bart-large-cnn for speed on CPU
+_SUMMARY_MODEL = "sshleifer/distilbart-cnn-12-6"
+
+
+def summarize_document(text: str) -> Dict[str, str]:
+    text = (text or "").strip()
+    if not text:
+        return {"doc_type": "Empty", "summary": "No text found in the document."}
+
+    doc_type = detect_doc_type(text)
+    person = try_extract_person_name(text)
+
+    summarizer = pipeline("summarization", model=_SUMMARY_MODEL)
+
+    chunks = chunk_text(text)
+    summaries = []
+
+    # summarize each chunk
+    for chunk in chunks:
+        # keep lengths conservative to avoid warnings / bad outputs
+        result = summarizer(
+            chunk,
+            max_length=120,
+            min_length=35,
+            do_sample=False
+        )
+        summaries.append(result[0]["summary_text"])
+
+    # final compression pass (only if multiple chunks)
+    combined = " ".join(summaries).strip()
+    if len(summaries) > 1:
+        final = summarizer(
+            combined,
+            max_length=140,
+            min_length=60,
+            do_sample=False
+        )[0]["summary_text"]
+    else:
+        final = combined
+
+    # add a short “label” line when it’s clearly a resume
+    if doc_type == "Resume/CV":
+        if person:
+            final = f"This appears to be {person}'s resume/CV.\n\n{final}"
+        else:
+            final = f"This appears to be a resume/CV.\n\n{final}"
+
+    return {"doc_type": doc_type, "summary": final}
