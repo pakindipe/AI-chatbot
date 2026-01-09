@@ -1,0 +1,4 @@
+﻿This is my first chatbot knowledge file.
+It is a test document used to verify that the chatbot can retrieve information
+from its knowledge base and answer questions about stored text.
+
