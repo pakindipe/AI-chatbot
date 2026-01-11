@@ -2,7 +2,8 @@
 
 An AI-powered document assistant built with **Streamlit** that allows users to upload documents, generate intelligent summaries, detect document types, and chat with a knowledge base using Retrieval-Augmented Generation (RAG).
 
-<img width="929" height="491" alt="image" src="https://github.com/user-attachments/assets/053df741-ff6a-49ee-bdde-232cfb2619a9" />
+<img width="800" height="400" alt="image" src="https://github.com/user-attachments/assets/053df741-ff6a-49ee-bdde-232cfb2619a9" />
+<img width="800" height="400" alt="image" src="https://github.com/user-attachments/assets/ae042eb8-8f6e-4e4a-abc8-0e987d31ea9f" />
 
 ---
 
