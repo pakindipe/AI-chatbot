@@ -83,6 +83,7 @@ http://localhost:8501
 Philip Akindipe
 Computer Engineering — Queen’s University
 
+
 LinkedIn: https://www.linkedin.com/in/philip-akindipe/
 
 ---
