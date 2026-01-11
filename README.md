@@ -27,8 +27,10 @@ An AI-powered document assistant built with **Streamlit** that allows users to u
 
 1️⃣ Clone the repository
 
+```bash
 git clone https://github.com/pakindipe/AI-chatbot.git
 cd AI-chatbot
+```
 
 2️⃣ Create & activate a virtual environment
 
@@ -67,8 +69,30 @@ http://localhost:8501
 ```
 ---
 
-## Tech Stack
+## Privacy & Security
+- Uploaded documents are processed locally
+- No files are stored remotely
+- Sensitive documents are excluded from Git history
 
+---
+
+## Author
+Philip Akindipe
+Computer Engineering — Queen’s University
+LinkedIn: https://www.linkedin.com/in/philip-akindipe/
+
+---
+
+## Future Improvements
+- Streaming summaries
+- GPU acceleration
+- Per-document chat
+- Multi-document comparison
+- Export summaries as PDF
+
+---
+
+## Tech Stack
 - **Python**
 - **Streamlit**
 - **Hugging Face Transformers**
